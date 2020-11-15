@@ -3,7 +3,7 @@ from __future__ import division
 from math import sin, cos, radians, hypot
 
 from .paths import (
-    simplify_paths, sort_paths, join_paths, crop_paths, convex_hull,
+    simplify_paths, sort_paths, join_paths, crop_paths, convex_hull, delete_small_paths,
     expand_quadratics, paths_length)
 
 try:
@@ -28,14 +28,29 @@ class Drawing(object):
         self._down_length = None
         self._hull = None
 
+    def clean(self):
+        self.paths = [x for x in self.paths if len(x)>0]
+        self.dirty()
+
+    def deduplicatePaths(self):
+        pathsdeduplicated = []
+        for p in self.paths:
+            ls = [[p[i],p[i+1]] for i in range(len(p)-1)]
+            for l in ls:
+                insert = True
+                for pd in pathsdeduplicated:
+                    if (l[0] == pd[0] and l[1] == pd[1]) or (l[0] == pd[1] and l[1] == pd[0]):
+                        insert = False
+                if insert:
+                    pathsdeduplicated.append(l)
+        self.paths = pathsdeduplicated
+        self.dirty()
+
     @classmethod
     def loads(cls, data):
         paths = []
         for line in data.split('\n'):
-            line = line.strip()
-            if line.startswith('#'):
-                continue
-            path = line.split()
+            path = line.strip().split()
             path = [tuple(map(float, x.split(','))) for x in path]
             path = expand_quadratics(path)
             if path:
@@ -47,6 +62,27 @@ class Drawing(object):
         with open(filename, 'r') as fp:
             return cls.loads(fp.read())
 
+    @classmethod
+    def load_svg(cls, filename):
+        import xml.etree.ElementTree as ET
+        paths = []
+        with open(filename, 'r') as fp:
+            root = ET.fromstring(fp.read())
+            for p in root.iter():
+                if "polyline" in p.tag:
+                    p = p.attrib["points"].split(" ")
+                    p = [tuple(map(float,x.split(','))) for x in p]
+                    paths.append(p)
+                elif "polygon" in p.tag:
+                    p = list(map(float,p.attrib["points"].split(" ")))
+                    print(p)
+                    paths.append(p)
+                elif "path" in p.tag:
+                    p = list(map(float,p.attrib["points"].split(" ")))
+                    print(p)
+                    paths.append(p)
+        return cls(paths)
+
     def dumps(self):
         lines = []
         for path in self.paths:
@@ -57,10 +93,10 @@ class Drawing(object):
         with open(filename, 'w') as fp:
             fp.write(self.dumps())
 
-    def dumps_svg(self, scale=96):
+    def dumps_svg(self, scale=96,iw=None,ih=None):
         lines = []
-        w = (self.width + 2) * scale
-        h = (self.height + 2) * scale
+        w = iw*scale if iw else (self.width + 2) * scale
+        h = ih*scale if ih else (self.height + 2) * scale
         lines.append('<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="%g" height="%g">' % (w, h))
         lines.append('<g transform="scale(%g) translate(1 1)">' % scale)
         for path in self.paths:
@@ -70,14 +106,15 @@ class Drawing(object):
                 p.append('%s%g %g' % (c, x, y))
                 c = 'L'
             d = ' '.join(p)
-            lines.append('<path d="%s" fill="none" stroke="black" stroke-width="0.01" stroke-linecap="round" stroke-linejoin="round" />' % d)
+            lines.append('<path d="%s" fill="none" stroke="black" stroke-width="0.1" stroke-linecap="round" stroke-linejoin="round" />' % d)
         lines.append('</g>')
         lines.append('</svg>')
         return '\n'.join(lines)
 
-    def dump_svg(self, filename):
+
+    def dump_svg(self, filename, scale=96,w=None,h=None):
         with open(filename, 'w') as fp:
-            fp.write(self.dumps_svg())
+            fp.write(self.dumps_svg(scale,w,h))
 
     @property
     def points(self):
@@ -107,7 +144,7 @@ class Drawing(object):
     def length(self):
         if self._length is None:
             length = self.down_length
-            for p0, p1 in zip(self.paths, self.paths[1:]):
+            for p0, p1 in list(zip(self.paths, self.paths[1:])):
                 x0, y0 = p0[-1]
                 x1, y1 = p1[0]
                 length += hypot(x1 - x0, y1 - y0)
@@ -154,6 +191,9 @@ class Drawing(object):
 
     def sort_paths(self, reversable=True):
         return Drawing(sort_paths(self.paths, reversable))
+    
+    def delete_small_paths(self, thr):
+        return Drawing(delete_small_paths(self.paths,thr))
 
     def join_paths(self, tolerance):
         return Drawing(join_paths(self.paths, tolerance))
@@ -220,6 +260,18 @@ class Drawing(object):
         height -= padding * 2
         scale = min(width / self.width, height / self.height)
         return self.scale(scale, scale).center(width, height)
+
+    def scale_to_fit_eleks(self):
+        return self.scale_to_fit(256,178)
+    
+    def scale_to_fit_calculations(self, width, height, padding=0):
+        width -= padding * 2
+        height -= padding * 2
+        scale = min(width / self.width, height / self.height)
+        return (scale, width, height)
+
+    def scale_to_fit_eleks_calculations(self):
+        return self.scale_to_fit_calculations(256,178)
 
     def rotate_and_scale_to_fit(self, width, height, padding=0, step=1):
         values = []

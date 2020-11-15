@@ -1,4 +1,4 @@
-from math import hypot
+from math import hypot,sqrt
 from pyhull.convex_hull import ConvexHull
 from shapely import geometry
 
@@ -17,7 +17,7 @@ def load_paths(filename):
 
 def path_length(points):
     result = 0
-    for (x1, y1), (x2, y2) in zip(points, points[1:]):
+    for (x1, y1), (x2, y2) in list(zip(points, points[1:])):
         result += hypot(x2 - x1, y2 - y1)
     return result
 
@@ -33,6 +33,9 @@ def simplify_path(points, tolerance):
 
 def simplify_paths(paths, tolerance):
     return [simplify_path(x, tolerance) for x in paths]
+
+def delete_small_paths(paths,thr):
+    return [p for p in paths if sqrt((p[0][0]-p[1][0])**2+(p[0][1]-p[1][1])**2) > thr]
 
 def sort_paths(paths, reversable=True):
     first = paths[0]
