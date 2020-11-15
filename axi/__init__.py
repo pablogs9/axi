@@ -1,4 +1,5 @@
 from .device import Device
+from .deviceGCODE import DeviceGCODE
 from .drawing import Drawing
 from .lindenmayer import LSystem
 from .paths import (
@@ -18,7 +19,7 @@ from .paths import (
 )
 from .planner import Planner
 from .turtle import Turtle
-from .util import draw, reset
+from .util import draw, drawGCODE, reset
 
 from .drawing import (
     V3_SIZE,
